@@ -101,7 +101,7 @@ class SimpleSongCardWidget extends StatelessWidget {
                         .textTheme
                         .subtitle1
                         ?.copyWith(fontWeight: FontWeight.bold),
-                    width: 152, // 240 - (60 + 16 + 12)
+                    width: 252, // 340 - (60 + 16 + 12)
                   ),
                 ),
                 SizedBox(height: 4),
