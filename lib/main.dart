@@ -146,7 +146,7 @@ class _MyHomePageState extends State<MyHomePage> {
           title: song.title?.first ?? "",
           artist: song.artist?.first ?? "",
           album: song.album?.first ?? "",
-          imageUrl: currentSong.imageUrl,
+          imageUrl: null,
         );
       }
     });
