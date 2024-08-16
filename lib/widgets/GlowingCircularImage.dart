@@ -1,17 +1,21 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:mpd_viewer/widgets/LoadingDots.dart';
+import 'package:mpd_viewer/widgets/LocalImageWithFallback.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'dart:math' as math;
 
 class GlowingCircularImage extends StatefulWidget {
   final String? imagePath;
+  final String songName;
   final double size;
   final double glowIntensity;
 
   const GlowingCircularImage({
     Key? key,
     required this.imagePath,
+    required this.songName,
     this.size = 100.0,
     this.glowIntensity = 5.0,
   }) : super(key: key);
@@ -22,7 +26,6 @@ class GlowingCircularImage extends StatefulWidget {
 
 class _GlowingCircularImageState extends State<GlowingCircularImage> {
   bool _isLoading = false;
-  bool _hasError = false;
   Color _glowColor = Colors.transparent;
 
   @override
@@ -41,8 +44,21 @@ class _GlowingCircularImageState extends State<GlowingCircularImage> {
 
   Future<void> _loadImage() async {
     if (widget.imagePath == null) {
+      setState(() {
+        _isLoading = false;
+        _glowColor = Colors.transparent;
+      });
       return;
     }
+    // 画像ファイルが存在するか
+    if (!File(widget.imagePath!).existsSync()) {
+      setState(() {
+        _isLoading = false;
+      });
+      debugPrint('Image file not found: ${widget.imagePath}');
+      return;
+    }
+
     try {
       ImageProvider imageProvider = FileImage(File(widget.imagePath!));
       final paletteGenerator =
@@ -72,8 +88,8 @@ class _GlowingCircularImageState extends State<GlowingCircularImage> {
         _isLoading = false;
       });
     } catch (e) {
+      debugPrint(e.toString());
       setState(() {
-        _hasError = true;
         _isLoading = false;
       });
     }
@@ -98,19 +114,21 @@ class _GlowingCircularImageState extends State<GlowingCircularImage> {
         child: Container(
           width: widget.size,
           height: widget.size,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.grey[300],
           ),
           child: ClipOval(
             child: (_isLoading || widget.imagePath == null)
-                ? Center(child: CircularProgressIndicator())
-                : _hasError
-                    ? Icon(Icons.error, color: Colors.red)
-                    : Image(
-                        image: FileImage(File(widget.imagePath!)),
-                        fit: BoxFit.cover,
-                      ),
+                ? Center(
+                    child: LoadingDots(
+                    dotSize: 18,
+                    dotColor: Theme.of(context).colorScheme.primary,
+                  ))
+                : LocalImageWithFallback(
+                    imagePath: widget.imagePath!,
+                    songName: widget.songName,
+                    fit: BoxFit.cover,
+                  ),
           ),
         ),
       ),

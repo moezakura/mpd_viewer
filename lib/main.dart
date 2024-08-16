@@ -137,6 +137,10 @@ class _MyHomePageState extends State<MyHomePage> {
     // 300msごとに実行
     Timer.periodic(const Duration(milliseconds: 300), (timer) async {
       try {
+        if(client == null) {
+          return;
+        }
+
         if (!client!.connection.isConnected) {
           throw Exception("Not connected");
         }
@@ -283,6 +287,7 @@ class _MyHomePageState extends State<MyHomePage> {
               children: [
                 GlowingCircularImage(
                   imagePath: currentSong.imageUrl,
+                  songName: currentSong.title,
                   size: 250.0,
                   glowIntensity: 80.0,
                 ),
@@ -299,7 +304,7 @@ class _MyHomePageState extends State<MyHomePage> {
             Spacer(),
             // 横並びに表示
             Container(
-              height: 80,
+              height: 60+16*2,
               padding: const EdgeInsets.fromLTRB(
                 32,
                 0,

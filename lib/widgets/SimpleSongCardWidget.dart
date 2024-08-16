@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:marquee/marquee.dart';
+import 'package:mpd_viewer/widgets/LoadingDots.dart';
+import 'package:mpd_viewer/widgets/LocalImageWithFallback.dart';
 
 class ConditionalMarquee extends StatelessWidget {
   final String text;
@@ -80,13 +82,17 @@ class SimpleSongCardWidget extends StatelessWidget {
         children: [
           ClipOval(
             child: (imagePath == null)
-                ? const Center(child: CircularProgressIndicator())
-                : Image(
-              image: FileImage(File(imagePath!)),
-              width: 60,
-              height: 60,
-              fit: BoxFit.cover,
-            ),
+                ? Center(
+                    child: LoadingDots(
+                    dotColor: Theme.of(context).colorScheme.primary,
+                  ))
+                : LocalImageWithFallback(
+                    imagePath: imagePath!,
+                    songName: title,
+                    width: 60,
+                    height: 60,
+                    fit: BoxFit.cover,
+                  ),
           ),
           SizedBox(width: 16),
           Expanded(
@@ -110,8 +116,8 @@ class SimpleSongCardWidget extends StatelessWidget {
                   child: ConditionalMarquee(
                     text: '$artist • $album',
                     style: Theme.of(context).textTheme.caption?.copyWith(
-                      fontStyle: FontStyle.italic,
-                    ),
+                          fontStyle: FontStyle.italic,
+                        ),
                     width: 252, // 340 - (60 + 16 + 12)
                   ),
                 ),
