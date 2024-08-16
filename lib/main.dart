@@ -5,11 +5,13 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:mpd_viewer/services/AlbumArtDownloadService.dart';
 import 'package:mpd_viewer/services/ImageCacheService.dart';
+import 'package:mpd_viewer/services/SettingsService.dart';
 import 'package:mpd_viewer/widgets/ConnectionErrorOverlay.dart';
 import 'package:mpd_viewer/widgets/GlowingCircularImage.dart';
 import 'package:mpd_viewer/widgets/MusicPlayerControls.dart';
 import 'package:mpd_viewer/widgets/CenteredTwoLineSongInfoWidget.dart';
 import 'package:flutter/services.dart';
+import 'package:mpd_viewer/widgets/SettingsIconButton.dart';
 import 'package:mpd_viewer/widgets/SimpleSongCardWidget.dart';
 
 class Song {
@@ -71,6 +73,7 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   MpdClient? client;
   final ImageCacheService imageCacheService = ImageCacheService();
+  final SettingsService settingsService = SettingsService();
   AlbumArtDownloadService? albumArtDownloadService;
 
   Song currentSong = Song(pos: 0, file: '', title: '', artist: '', album: '');
@@ -83,12 +86,19 @@ class _MyHomePageState extends State<MyHomePage> {
   int connectWaitCount = 0;
   int previousConnectWaitCount = 0;
 
+  String connectHost = '';
+  int connectPort = 0;
+
   void connectMpd() async {
+    if (connectHost.isEmpty || connectPort == 0) {
+      connectHost = await settingsService.getConnectHost();
+      connectPort = await settingsService.getConnectPort();
+    }
     client = MpdClient(
-      connectionDetails: const MpdConnectionDetails(
-        host: "192.168.20.210",
-        port: 6600,
-        timeout: Duration(seconds: 1),
+      connectionDetails: MpdConnectionDetails(
+        host: connectHost,
+        port: connectPort,
+        timeout: const Duration(seconds: 1),
       ),
       onError: (error, stackTrace) {
         debugPrint("Error: $error");
@@ -116,8 +126,11 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
 
-    connectMpd();
-    albumArtDownloadService = AlbumArtDownloadService(client!);
+    // 非同期関数をここで実行させる
+    () async {
+      connectMpd();
+      albumArtDownloadService = AlbumArtDownloadService(client!);
+    }();
 
     // 300msごとに実行
     Timer.periodic(const Duration(milliseconds: 300), (timer) async {
@@ -364,6 +377,25 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
         ConnectionErrorOverlay(
           isVisible: isConnecting,
+          connectHost: connectHost,
+          connectPort: connectPort,
+        ),
+
+        // 設定アイコンボタン
+        SettingsIconButton(
+          onSettingsSaved: (hostname, port) {
+            print('Hostname: $hostname, Port: $port');
+            // ここで設定を保存したり、アプリケーションの状態を更新したりします
+            connectHost = hostname;
+            connectPort = int.parse(port);
+            // 接続先の保存
+            settingsService.setConnectHost(hostname);
+            settingsService.setConnectPort(int.parse(port));
+          },
+          top: 24.0,
+          right: 24.0,
+          defaultHostname: connectHost,
+          defaultPort: connectPort.toString(),
         ),
       ],
     ));
