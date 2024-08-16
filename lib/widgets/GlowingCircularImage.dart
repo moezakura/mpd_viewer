@@ -82,7 +82,7 @@ class _GlowingCircularImageState extends State<GlowingCircularImage> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: widget.size + widget.glowIntensity * 2,
+      width: double.infinity,
       height: widget.size + widget.glowIntensity * 2,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
