@@ -89,7 +89,7 @@ class _MyHomePageState extends State<MyHomePage> {
   String connectHost = '';
   int connectPort = 0;
 
-  void connectMpd() async {
+  Future<void> connectMpd() async {
     if (connectHost.isEmpty || connectPort == 0) {
       connectHost = await settingsService.getConnectHost();
       connectPort = await settingsService.getConnectPort();
@@ -120,6 +120,8 @@ class _MyHomePageState extends State<MyHomePage> {
       },
     );
     await client!.ping();
+    // 1MBにする
+    await client!.binarylimit(1024 * 1024);
   }
 
   @override
@@ -128,7 +130,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // 非同期関数をここで実行させる
     () async {
-      connectMpd();
+      await connectMpd();
       albumArtDownloadService = AlbumArtDownloadService(client!);
     }();
 
