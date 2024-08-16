@@ -1,15 +1,16 @@
 import 'dart:async';
 
 import 'package:dart_mpd/dart_mpd.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:mpd_viewer/services/AlbumArtDownloadService.dart';
 import 'package:mpd_viewer/services/ImageCacheService.dart';
+import 'package:mpd_viewer/widgets/ConnectionErrorOverlay.dart';
 import 'package:mpd_viewer/widgets/GlowingCircularImage.dart';
 import 'package:mpd_viewer/widgets/MusicPlayerControls.dart';
 import 'package:mpd_viewer/widgets/CenteredTwoLineSongInfoWidget.dart';
 import 'package:flutter/services.dart';
 import 'package:mpd_viewer/widgets/SimpleSongCardWidget.dart';
-import 'package:carousel_slider/carousel_slider.dart';
 
 class Song {
   final int pos;
@@ -68,14 +69,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  // final MPDService mpdService = MPDService();
-  final MpdClient client = MpdClient(
-    connectionDetails: const MpdConnectionDetails(
-      host: "192.168.20.210",
-      port: 6600,
-      timeout: Duration(seconds: 3),
-    ),
-  );
+  MpdClient? client;
   final ImageCacheService imageCacheService = ImageCacheService();
   AlbumArtDownloadService? albumArtDownloadService;
 
@@ -85,49 +79,104 @@ class _MyHomePageState extends State<MyHomePage> {
   Song? nextSong;
   Song? previousSong;
 
+  bool isConnecting = false;
+  int connectWaitCount = 0;
+  int previousConnectWaitCount = 0;
+
+  void connectMpd() async {
+    client = MpdClient(
+      connectionDetails: const MpdConnectionDetails(
+        host: "192.168.20.210",
+        port: 6600,
+        timeout: Duration(seconds: 1),
+      ),
+      onError: (error, stackTrace) {
+        debugPrint("Error: $error");
+        // connectWaitCount * 3秒待って再接続
+        Future.delayed(Duration(seconds: connectWaitCount * 3), () {
+          connectMpd();
+        });
+        setState(() {
+          isConnecting = true;
+          connectWaitCount++;
+        });
+      },
+      onConnect: () {
+        debugPrint("Connected to MPD");
+        setState(() {
+          isConnecting = false;
+          connectWaitCount = 0;
+        });
+      },
+    );
+    await client!.ping();
+  }
+
   @override
   void initState() {
     super.initState();
 
-    albumArtDownloadService = AlbumArtDownloadService(client);
+    connectMpd();
+    albumArtDownloadService = AlbumArtDownloadService(client!);
 
     // 300msごとに実行
     Timer.periodic(const Duration(milliseconds: 300), (timer) async {
-      await getCurrentSong();
-      // プレイリストを取得
-      final playlist = await client.playlistinfo();
-      final nextSongPos = currentSong.pos + 1;
-      final previousSongPos = currentSong.pos - 1;
-      // nextがあれば取得
-      if (playlist.length > nextSongPos) {
-        final nextSongPlaylistItem = playlist[nextSongPos];
-        final nextSongItem = await getSongWithDownload(nextSongPlaylistItem);
-        setState(() {
-          nextSong = nextSongItem;
-        });
-      } else {
-        setState(() {
-          nextSong = null;
-        });
-      }
-      // previousがあれば取得
-      if (previousSongPos >= 0) {
-        final previousSongPlaylistItem = playlist[previousSongPos];
-        final previousSongItem =
-            await getSongWithDownload(previousSongPlaylistItem);
-        setState(() {
-          previousSong = previousSongItem;
-        });
-      } else {
-        setState(() {
-          previousSong = null;
-        });
+      try {
+        if (!client!.connection.isConnected) {
+          throw Exception("Not connected");
+        }
+        await client!.ping();
+
+        await getCurrentSong();
+        // プレイリストを取得
+        final playlist = await client!.playlistinfo();
+        final nextSongPos = currentSong.pos + 1;
+        final previousSongPos = currentSong.pos - 1;
+        // nextがあれば取得
+        if (playlist.length > nextSongPos) {
+          final nextSongPlaylistItem = playlist[nextSongPos];
+          final nextSongItem = await getSongWithDownload(nextSongPlaylistItem);
+          setState(() {
+            nextSong = nextSongItem;
+          });
+        } else {
+          setState(() {
+            nextSong = null;
+          });
+        }
+        // previousがあれば取得
+        if (previousSongPos >= 0) {
+          final previousSongPlaylistItem = playlist[previousSongPos];
+          final previousSongItem =
+              await getSongWithDownload(previousSongPlaylistItem);
+          setState(() {
+            previousSong = previousSongItem;
+          });
+        } else {
+          setState(() {
+            previousSong = null;
+          });
+        }
+      } catch (e) {
+        debugPrint("Error: $e");
+        if (previousConnectWaitCount == connectWaitCount) {
+          Future.delayed(Duration(seconds: connectWaitCount * 3), () {
+            connectMpd();
+            setState(() {
+              previousConnectWaitCount = connectWaitCount;
+            });
+          });
+          setState(() {
+            isConnecting = true;
+            connectWaitCount++;
+          });
+        }
       }
     });
   }
 
   Future<void> getCurrentSong() async {
-    final song = await client.currentsong();
+    final song = await client!.currentsong();
     final songId = "${song!.id}.jpg";
     final isCacheImage = await imageCacheService.isCached(songId);
     if (!isCacheImage) {
@@ -168,7 +217,7 @@ class _MyHomePageState extends State<MyHomePage> {
     } catch (e) {}
 
     // 現在の状態を取得する
-    final status = await client.status();
+    final status = await client!.status();
     setState(() {
       isPlaying = status.state == MpdState.play;
       currentProgress = (status.elapsed ?? 1) / (status.duration ?? 1);
@@ -209,107 +258,114 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: <Widget>[
-          Stack(
-            alignment: Alignment.topCenter,
-            children: [
-              GlowingCircularImage(
-                imagePath: currentSong.imageUrl,
-                size: 250.0,
-                glowIntensity: 80.0,
-              ),
-              Positioned(
-                bottom: 0,
-                child: CenteredTwoLineSongInfoWidget(
-                    title: currentSong.title,
-                    album: currentSong.album,
-                    artist: currentSong.artist),
-              )
-            ],
-          ),
-
-          Spacer(),
-          // 横並びに表示
-          Container(
-            height: 80,
-            padding: const EdgeInsets.fromLTRB(
-              32,
-              0,
-              32,
-              0,
+        body: Stack(
+      children: [
+        Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: <Widget>[
+            Stack(
+              alignment: Alignment.topCenter,
+              children: [
+                GlowingCircularImage(
+                  imagePath: currentSong.imageUrl,
+                  size: 250.0,
+                  glowIntensity: 80.0,
+                ),
+                Positioned(
+                  bottom: 0,
+                  child: CenteredTwoLineSongInfoWidget(
+                      title: currentSong.title,
+                      album: currentSong.album,
+                      artist: currentSong.artist),
+                )
+              ],
             ),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              (previousSong != null)
-                  ? Row(
-                      children: [
-                        // 戻るアイコン
+
+            Spacer(),
+            // 横並びに表示
+            Container(
+              height: 80,
+              padding: const EdgeInsets.fromLTRB(
+                32,
+                0,
+                32,
+                0,
+              ),
+              child:
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                (previousSong != null)
+                    ? Row(
+                        children: [
+                          // 戻るアイコン
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back_ios_new_outlined),
+                            iconSize: 48,
+                            onPressed: () {
+                              // 前の曲への移動処理
+                              client!.previous();
+                            },
+                          ),
+                          SimpleSongCardWidget(
+                              imagePath: previousSong!.imageUrl,
+                              title: previousSong!.title,
+                              album: previousSong!.album,
+                              artist: previousSong!.artist)
+                        ],
+                      )
+                    : Container(),
+                const Spacer(),
+                (nextSong != null)
+                    ? Row(children: [
+                        SimpleSongCardWidget(
+                            imagePath: nextSong!.imageUrl,
+                            title: nextSong!.title,
+                            album: nextSong!.album,
+                            artist: nextSong!.artist),
                         IconButton(
-                          icon: const Icon(Icons.arrow_back_ios_new_outlined),
+                          icon: const Icon(Icons.arrow_forward_ios_outlined),
                           iconSize: 48,
                           onPressed: () {
                             // 前の曲への移動処理
-                            client.previous();
+                            client!.next();
                           },
                         ),
-                        SimpleSongCardWidget(
-                            imagePath: previousSong!.imageUrl,
-                            title: previousSong!.title,
-                            album: previousSong!.album,
-                            artist: previousSong!.artist)
-                      ],
-                    )
-                  : Container(),
-              const Spacer(),
-              (nextSong != null)
-                  ? Row(children: [
-                      SimpleSongCardWidget(
-                          imagePath: nextSong!.imageUrl,
-                          title: nextSong!.title,
-                          album: nextSong!.album,
-                          artist: nextSong!.artist),
-                      IconButton(
-                        icon: const Icon(Icons.arrow_forward_ios_outlined),
-                        iconSize: 48,
-                        onPressed: () {
-                          // 前の曲への移動処理
-                          client.next();
-                        },
-                      ),
-                    ])
-                  : Container(),
-            ]),
-          ),
+                      ])
+                    : Container(),
+              ]),
+            ),
 
-          Spacer(),
+            Spacer(),
 
-          MusicPlayerControls(
-            onPlayPause: () {
-              // 再生/一時停止の処理
-              if (isPlaying) {
-                client.pause();
-              } else {
-                client.connection.send("play");
-              }
-            },
-            onPrevious: () {
-              // 前の曲への移動処理
-              client.previous();
-            },
-            onNext: () {
-              // 次の曲への移動処理
-              client.next();
-            },
-            value: currentProgress,
-            // 現在の再生位置（0.0 から 1.0 の範囲）
-            onChanged: (newValue) {
-              // スライダーの値が変更されたときの処理
-            },
-            isPlaying: isPlaying, // 現在再生中かどうか
-          )
-        ],
-      ),
-    );
+            MusicPlayerControls(
+              onPlayPause: () {
+                // 再生/一時停止の処理
+                if (isPlaying) {
+                  client!.pause();
+                } else {
+                  client!.connection.send("play");
+                }
+              },
+              onPrevious: () {
+                // 前の曲への移動処理
+                client!.previous();
+              },
+              onNext: () {
+                // 次の曲への移動処理
+                client!.next();
+              },
+              value: currentProgress,
+              // 現在の再生位置（0.0 から 1.0 の範囲）
+              onChanged: (newValue) {
+                // スライダーの値が変更されたときの処理
+              },
+              isPlaying: isPlaying, // 現在再生中かどうか
+            )
+          ],
+        ),
+        ConnectionErrorOverlay(
+          isVisible: isConnecting,
+        ),
+      ],
+    ));
   }
 }
